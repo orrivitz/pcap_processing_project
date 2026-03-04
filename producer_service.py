@@ -1,3 +1,5 @@
+"""Kafka producer service that watches for PCAP files and sends packets to Kafka."""
+
 import json
 import logging
 import os
@@ -25,6 +27,7 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "5"))
 
 
 def serialize_packet(row):
+    """Serialize a DataFrame row to a JSON-encoded byte string for Kafka."""
     data = row.to_dict()
     ts = data.get("timestamp")
     if isinstance(ts, datetime):
@@ -95,6 +98,7 @@ def watch_directory(producer):
 
 
 def main():
+    """Run the producer in CLI or watch mode."""
     # CLI mode for backward compatibility
     if len(sys.argv) == 2:
         pcap_file = sys.argv[1]
@@ -120,8 +124,10 @@ def main():
         acks="all",
     )
     logging.info("Starting in watch mode...")
-    watch_directory(producer)
-    producer.close()
+    try:
+        watch_directory(producer)
+    finally:
+        producer.close()
 
 
 if __name__ == "__main__":

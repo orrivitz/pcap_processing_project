@@ -1,3 +1,5 @@
+"""Kafka consumer service that reads PCAP packets and writes them to Elasticsearch."""
+
 import json
 import logging
 import math
@@ -149,7 +151,8 @@ def update_consumer_lag(kafka_consumer):
 
 
 def main():
-    print("Starting consumer...", flush=True)
+    """Start the Kafka consumer and write packets to Elasticsearch."""
+    logging.info("Starting consumer...")
 
     # Log startup configuration
     logging.info("=== Consumer Configuration ===")
@@ -164,7 +167,7 @@ def main():
     logging.info("===============================")
 
     start_metrics_server()
-    print("Metrics server started", flush=True)
+    logging.info("Metrics server started")
 
     # Create consumer WITH group_id for Redpanda Console visibility
     # Must use subscribe() (not assign()) to register with group coordinator
@@ -181,26 +184,25 @@ def main():
 
     # Use subscribe() - NOT assign() - to register with group coordinator
     consumer.subscribe([TOPIC])
-    print(f"Consumer group '{GROUP_ID}' subscribed to {TOPIC}", flush=True)
+    logging.info("Consumer group '%s' subscribed to %s", GROUP_ID, TOPIC)
 
     # Wait for partition assignment (JoinGroup/SyncGroup protocol)
-    print("Waiting for partition assignment...", flush=True)
+    logging.info("Waiting for partition assignment...")
     max_wait = 60  # Wait up to 60 seconds
     waited = 0
     while not consumer.assignment() and waited < max_wait:
         consumer.poll(timeout_ms=1000)
         waited += 1
         if waited % 10 == 0:
-            print(f"Still waiting for assignment... ({waited}s)", flush=True)
+            logging.info("Still waiting for assignment... (%ds)", waited)
 
     assignment = consumer.assignment()
     if not assignment:
-        print(
-            "ERROR: No partition assignment after 60s. Check group coordinator.",
-            flush=True,
+        logging.error(
+            "No partition assignment after 60s. Check group coordinator."
         )
     else:
-        print(f"Got partition assignment: {assignment}", flush=True)
+        logging.info("Got partition assignment: %s", assignment)
 
     dlq_producer = KafkaProducer(
         bootstrap_servers=config.KAFKA_BOOTSTRAP,

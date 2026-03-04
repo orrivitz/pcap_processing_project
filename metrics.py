@@ -1,3 +1,5 @@
+"""Prometheus metric definitions for the PCAP processing pipeline."""
+
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 from config import config
@@ -22,4 +24,5 @@ dlq_messages_total = Counter(
 
 
 def start_metrics_server():
+    """Start the Prometheus HTTP metrics server on the configured port."""
     start_http_server(config.METRICS_PORT)

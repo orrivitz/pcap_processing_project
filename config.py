@@ -1,3 +1,5 @@
+"""Application configuration loaded from environment variables."""
+
 import os
 from typing import Optional
 
