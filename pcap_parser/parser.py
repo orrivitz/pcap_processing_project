@@ -1,6 +1,6 @@
 import logging
 import struct
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 import dpkt
 import pandas as pd
@@ -137,6 +137,38 @@ def parse_packet(ts: float, buf: bytes, datalink: int) -> Optional[dict]:
         "l4_protocol": proto_str,
         "packet_length": len(buf),
     }
+
+
+def iter_pcap(file_path: str) -> Iterator[dict]:
+    """Yield parsed packet dicts one at a time for memory-efficient streaming.
+
+    Each yielded dict contains the same fields as a row in the DataFrame
+    returned by :func:`parse_pcap` (with IPs already converted to
+    dotted-quad strings).
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the PCAP file to read.
+
+    Yields
+    ------
+    dict
+        A single parsed packet record.
+    """
+    with open(file_path, "rb") as f:
+        try:
+            pcap = dpkt.pcap.Reader(f)
+        except (dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError):
+            return
+
+        dl = pcap.datalink()
+        for ts, buf in pcap:
+            record = parse_packet(ts, buf, dl)
+            if record is not None:
+                record["src_ip"] = _int_to_ip(record["src_ip"])
+                record["dst_ip"] = _int_to_ip(record["dst_ip"])
+                yield record
 
 
 def parse_pcap(file_path: str) -> pd.DataFrame:

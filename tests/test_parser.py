@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from scapy.all import ARP, ICMP, IP, TCP, UDP, Ether, wrpcap
 
-from pcap_parser.parser import parse_pcap
+from pcap_parser.parser import iter_pcap, parse_pcap
 
 # helper to create a small pcap file containing a handful of packets
 
@@ -561,3 +561,29 @@ def test_arp_with_various_ips():
         assert parser._int_to_ip(rec["src_ip"]) == src_ip
         assert parser._int_to_ip(rec["dst_ip"]) == dst_ip
         assert rec["l4_protocol"] == "arp"
+
+
+def test_iter_pcap_yields_packets(tmp_path):
+    """Test that iter_pcap yields packet dicts one at a time (streaming)."""
+    pcap_file = tmp_path / "stream.pcap"
+    create_sample_pcap(str(pcap_file))
+
+    packets = list(iter_pcap(str(pcap_file)))
+
+    assert len(packets) == 3
+    assert all(isinstance(p, dict) for p in packets)
+    assert packets[0]["src_ip"] == "1.1.1.1"
+    assert packets[0]["l4_protocol"] == "tcp"
+    assert packets[1]["l4_protocol"] == "udp"
+    assert packets[2]["l4_protocol"] == "icmp"
+    # Verify IPs are already string format (dotted-quad)
+    assert "." in packets[0]["src_ip"]
+
+
+def test_iter_pcap_empty_file(tmp_path):
+    """Test that iter_pcap handles empty/invalid files gracefully."""
+    empty_file = tmp_path / "empty.pcap"
+    empty_file.write_bytes(b"")
+
+    packets = list(iter_pcap(str(empty_file)))
+    assert packets == []
