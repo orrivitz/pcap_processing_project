@@ -1,0 +1,7 @@
+pandas
+pytest
+scapy
+dpkt
+elasticsearch>=8.0.0,<9.0.0
+kafka-python>=2.0.2
+prometheus_client>=0.16.0
