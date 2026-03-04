@@ -80,7 +80,8 @@ Kafka producer that runs in two modes:
 Kafka consumer that reads packets from Kafka and bulk-indexes them to Elasticsearch.
 
 **Features:**
-- Batch size of 100 documents per bulk request
+- Batch size of up to 100 documents per bulk request (smaller batches are flushed immediately after each poll cycle, so files with fewer than 100 packets are processed without waiting)
+- Idempotent writes — each document gets a deterministic `_id` (`topic-partition-offset`) so retries overwrite instead of duplicating
 - Retry with exponential backoff (up to 2 retries)
 - Dead Letter Queue (`pcap-packets-dlq`) for failed documents
 - Consumer lag tracking via Prometheus Gauge
@@ -103,37 +104,67 @@ class Config:
 
 ### 6. Metrics (`metrics.py`)
 
-Prometheus metrics for observability.
+Prometheus metrics for observability. Both the producer and consumer expose a `/metrics` HTTP endpoint on port 9100, which Prometheus scrapes every 15 seconds (configured in `prometheus.yaml`).
 
-**Producer Metrics:**
-| Metric | Type | Description |
-|--------|------|-------------|
-| `pcap_packets_total` | Counter | Total packets by protocol |
-| `pcap_bytes_total` | Counter | Total bytes by protocol |
-| `pcap_file_processing_seconds` | Histogram | Time to process a PCAP file |
+#### Producer Metrics
 
-**Consumer Metrics:**
-| Metric | Type | Description |
-|--------|------|-------------|
-| `pcap_elastic_write_total` | Counter | ES write results (success/fail) |
-| `pcap_consumer_lag` | Gauge | Kafka consumer lag |
-| `pcap_dlq_messages_total` | Counter | Messages sent to DLQ |
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `pcap_packets_total` | Counter | `protocol` | Cumulative count of packets parsed, broken down by L4 protocol (`tcp`, `udp`, `icmp`, `arp`, `other`). Incremented once per packet during PCAP parsing. |
+| `pcap_bytes_total` | Counter | `protocol` | Cumulative byte count of raw packet data, broken down by L4 protocol. Reflects the `packet_length` field of each parsed packet. |
+| `pcap_file_processing_seconds` | Histogram | *(none)* | Wall-clock time (in seconds) to parse a single PCAP file end-to-end. Uses buckets: 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120 seconds. |
 
-**Prometheus Queries:**
+**What's normal / abnormal:**
+
+| Metric | Normal Range | Investigate If |
+|--------|-------------|----------------|
+| `pcap_packets_total` | Grows proportionally to file size | Stays at 0 after sending a file (parsing failed or file was empty) |
+| `pcap_bytes_total` | Roughly `pcap_packets_total × avg_packet_size` | Much larger than expected (malformed length fields) or 0 |
+| `pcap_file_processing_seconds` | < 10s for files under 100K packets; < 60s for 1M packets | > 120s consistently (disk I/O bottleneck or very large file) |
+
+#### Consumer Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `pcap_elastic_write_total` | Counter | `status` | Cumulative count of documents written to Elasticsearch. Label `status=success` counts indexed docs; `status=fail` counts docs that failed after all retries and were sent to the DLQ. |
+| `pcap_consumer_lag` | Gauge | *(none)* | Current number of messages the consumer is behind the latest Kafka offset. Calculated every poll cycle by comparing committed offsets to end offsets across all assigned partitions. |
+| `pcap_dlq_messages_total` | Counter | `reason` | Cumulative count of messages sent to the Dead Letter Queue (`pcap-packets-dlq`). Label `reason` indicates the cause: `invalid_json`, `missing_timestamp`, `es_bulk_failure`, or `init` (startup dummy message). |
+
+**What's normal / abnormal:**
+
+| Metric | Normal Range | Investigate If |
+|--------|-------------|----------------|
+| `pcap_elastic_write_total{status="success"}` | Grows steadily as data is consumed | Flat while `pcap_packets_total` is growing (consumer not running or ES is down) |
+| `pcap_elastic_write_total{status="fail"}` | 0 (ideal) or very low | > 1% of total writes — indicates persistent ES issues or bad data |
+| `pcap_consumer_lag` | 0 when idle; spikes briefly after sending a file, then returns to 0 | Stays > 0 for minutes (consumer is too slow, crashed, or ES is unresponsive) |
+| `pcap_dlq_messages_total` | 1 (`init` message at startup) | Growing beyond 1 — means real messages are failing. Check `reason` label to diagnose |
+
+#### Useful Prometheus Queries
+
 ```promql
-# Consumer lag
+# Current consumer lag (should be 0 when caught up)
 pcap_consumer_lag
 
-# Average file processing time
+# Average file processing time (seconds)
 pcap_file_processing_seconds_sum / pcap_file_processing_seconds_count
 
 # 95th percentile processing time
 histogram_quantile(0.95, pcap_file_processing_seconds_bucket)
 
-# DLQ rate per minute
+# DLQ messages per minute (should be 0 in normal operation)
 rate(pcap_dlq_messages_total[1m]) * 60
 
-# Packets per protocol
+# ES write success rate (should be close to 1.0)
+pcap_elastic_write_total{status="success"}
+  / (pcap_elastic_write_total{status="success"} + pcap_elastic_write_total{status="fail"})
+
+# Packets parsed per second (rate over last 5 minutes)
+rate(pcap_packets_total[5m])
+
+# Bytes processed per second by protocol
+rate(pcap_bytes_total[5m])
+
+# Total packets per protocol (breakdown)
 pcap_packets_total
 ```
 
@@ -212,6 +243,7 @@ kubectl rollout restart deployment pcap-producer pcap-consumer
 **Document Schema:**
 ```json
 {
+  "doc_id": "pcap-packets-0-42",
   "timestamp": "2026-03-02T10:30:45.123456",
   "packet_length": 1500,
   "src_ip": "192.168.1.100",
@@ -222,6 +254,8 @@ kubectl rollout restart deployment pcap-producer pcap-consumer
   "ingested_at": "2026-03-02T10:30:46.000000"
 }
 ```
+
+The `doc_id` is a deterministic identifier derived from the Kafka topic, partition, and offset (e.g., `pcap-packets-0-42`). It is also used as the Elasticsearch `_id`, ensuring idempotent writes.
 
 **Query Example (via curl):**
 ```bash

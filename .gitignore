@@ -32,6 +32,10 @@ es_err.txt
 # Generated output
 *.csv
 
+# PCAP input files
+*.pcap
+*.pcapng
+
 # OS files
 .DS_Store
 Thumbs.db

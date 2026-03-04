@@ -165,10 +165,16 @@ def main(argv=None) -> int:
     prom_url = "http://localhost:9090/graph?" + urlencode(prom_params)
     print(f"Prometheus Dashboard: {prom_url}")
 
-    # Kibana – Dev Tools console (no data-view required, queries all pcap indices)
-    kibana_url = "http://localhost:5601/app/dev_tools#/console"
-    print(f"Kibana Dev Tools: {kibana_url}")
-    print("  Run: GET pcap-*/_search?size=100")
+    # Kibana – Discover view with all packet columns and 1-year time range
+    kibana_url = (
+        "http://localhost:5601/app/discover#/?_g=(filters:!(),refreshInterval:"
+        "(pause:!t,value:60000),time:(from:now-1y%2Fd,to:now))&_a=(columns:!"
+        "(ingested_at,timestamp,dst_ip,dst_port,l4_protocol,src_ip,packet_length,"
+        "src_port),filters:!(),grid:(columns:(ingested_at:(width:317))),index:"
+        "b795bd9f-a427-4912-bb91-13cf40f589f1,interval:auto,query:(language:kuery,"
+        "query:''),sort:!(!(timestamp,asc)))"
+    )
+    print(f"Kibana Discover: {kibana_url}")
 
     return 0
 

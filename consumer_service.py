@@ -54,7 +54,12 @@ def sanitize_doc(doc):
 
 
 def build_bulk_actions(messages, dlq_producer):
-    """Build ES bulk actions, sending unparseable messages to DLQ."""
+    """Build ES bulk actions, sending unparseable messages to DLQ.
+
+    Each document uses a deterministic ``_id`` derived from the Kafka
+    topic, partition and offset so that retries (e.g. after an ES
+    timeout) overwrite the same document instead of creating duplicates.
+    """
     actions = []
     for msg in messages:
         try:
@@ -67,7 +72,10 @@ def build_bulk_actions(messages, dlq_producer):
             packets_total.labels(protocol=protocol).inc()
             length = doc.get("packet_length", 0) or 0
             bytes_total.labels(protocol=protocol).inc(length)
-            actions.append({"_index": index_name, "_source": doc})
+            # Deterministic ID prevents duplicates on retry
+            doc_id = f"{msg.topic}-{msg.partition}-{msg.offset}"
+            doc["doc_id"] = doc_id
+            actions.append({"_index": index_name, "_id": doc_id, "_source": doc})
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             # Send malformed message to DLQ
             dlq_msg = {
