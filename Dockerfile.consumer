@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY config.py .
 COPY metrics.py .
 COPY consumer_service.py .
+COPY es-template.json .
 
 # Expose metrics port
 EXPOSE 9100

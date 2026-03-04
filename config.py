@@ -9,9 +9,11 @@ class Config:
         self.METRICS_PORT = int(os.getenv("METRICS_PORT", "9100"))
         # Consumer config
         self.ELASTIC_URL = os.getenv("ELASTIC_URL", "http://elasticsearch:9200")
+        self.ELASTIC_INDEX = os.getenv("ELASTIC_INDEX", "pcap-packets")
         self.ELASTIC_USERNAME = os.getenv("ELASTIC_USERNAME")
         self.ELASTIC_PASSWORD = os.getenv("ELASTIC_PASSWORD")
-        # Note: Index name is derived from packet timestamp (pcap-packets-YYYY.MM.DD)
+        # CLI / producer config
+        self.PCAP_FILE = os.getenv("PCAP_FILE")
 
     def get_es_auth(self) -> Optional[tuple]:
         if self.ELASTIC_USERNAME and self.ELASTIC_PASSWORD:

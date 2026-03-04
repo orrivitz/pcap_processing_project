@@ -13,6 +13,12 @@ def test_get_index_name():
     assert idx == "pcap-packets-2024.01.01"
 
 
+def test_get_index_name_custom_prefix():
+    ts = "2024-06-15T08:30:00"
+    idx = consumer_service.get_index_name(ts, index_prefix="custom-index")
+    assert idx == "custom-index-2024.06.15"
+
+
 @patch("consumer_service.KafkaConsumer")
 @patch("consumer_service.KafkaProducer")
 @patch("consumer_service.Elasticsearch")

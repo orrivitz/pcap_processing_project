@@ -28,13 +28,14 @@ GROUP_ID = "pcap-elastic-consumer-v2"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
-def get_index_name(ts):
+def get_index_name(ts, index_prefix=None):
+    prefix = index_prefix or config.ELASTIC_INDEX
     if isinstance(ts, str):
         dt = datetime.fromisoformat(ts)
     else:
         # Unix timestamp (float or int)
         dt = datetime.fromtimestamp(ts)
-    return f"pcap-packets-{dt:%Y.%m.%d}"
+    return f"{prefix}-{dt:%Y.%m.%d}"
 
 
 def sanitize_doc(doc):
@@ -113,6 +114,40 @@ def ensure_dlq_topic(dlq_producer):
     dlq_messages_total.labels(reason="init").inc()
 
 
+def apply_es_template(es):
+    """Apply ES index template on startup for mapping consistency."""
+    template_path = os.path.join(os.path.dirname(__file__), "es-template.json")
+    try:
+        with open(template_path, "r") as f:
+            template_body = json.load(f)
+        es.indices.put_index_template(name="pcap-packets", body=template_body)
+        logging.info("Applied ES index template 'pcap-packets'")
+    except FileNotFoundError:
+        logging.warning(f"ES template file not found at {template_path}, skipping")
+    except Exception as e:
+        logging.error(f"Failed to apply ES index template: {e}")
+
+
+def update_consumer_lag(kafka_consumer):
+    """Calculate and update the consumer lag gauge."""
+    try:
+        partitions = kafka_consumer.assignment()
+        if not partitions:
+            return
+        end_offsets = kafka_consumer.end_offsets(partitions)
+        total_lag = 0
+        for tp in partitions:
+            committed = kafka_consumer.committed(tp)
+            end = end_offsets.get(tp, 0)
+            if committed is not None:
+                total_lag += max(0, end - committed)
+            else:
+                total_lag += end
+        consumer_lag.set(total_lag)
+    except Exception as e:
+        logging.debug(f"Could not calculate consumer lag: {e}")
+
+
 def main():
     print("Starting consumer...", flush=True)
 
@@ -120,6 +155,7 @@ def main():
     logging.info("=== Consumer Configuration ===")
     logging.info(f"Kafka Bootstrap: {config.KAFKA_BOOTSTRAP}")
     logging.info(f"Elasticsearch URL: {config.ELASTIC_URL}")
+    logging.info(f"Elasticsearch Index Prefix: {config.ELASTIC_INDEX}")
     logging.info(f"Metrics Port: {config.METRICS_PORT}")
     logging.info(f"Consumer Group: {GROUP_ID}")
     logging.info(f"Topic: {TOPIC}")
@@ -135,7 +171,7 @@ def main():
     consumer = KafkaConsumer(
         bootstrap_servers=config.KAFKA_BOOTSTRAP,
         group_id=GROUP_ID,  # Required for consumer group registration
-        auto_offset_reset="latest",
+        auto_offset_reset="earliest",
         value_deserializer=lambda v: v,
         enable_auto_commit=True,  # Commit offsets automatically
         session_timeout_ms=30000,  # 30s session timeout
@@ -176,6 +212,7 @@ def main():
     es = Elasticsearch(
         config.ELASTIC_URL, basic_auth=config.get_es_auth(), verify_certs=True
     )
+    apply_es_template(es)
     ensure_dlq_topic(dlq_producer)
     batch = []
     logging.info("Entering main loop...")
@@ -200,6 +237,9 @@ def main():
             if batch:
                 process_batch(batch, es, dlq_producer)
                 batch = []
+
+            # Update consumer lag metric
+            update_consumer_lag(consumer)
 
             # Log status every ~60 seconds (12 polls * 5s)
             if poll_count % 12 == 0:
