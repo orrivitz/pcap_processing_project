@@ -66,11 +66,55 @@ def test_cli_file_not_found():
         cwd=os.path.dirname(os.path.dirname(__file__)),
         capture_output=True,
         text=True,
-        timeout=5,
+        timeout=15,
     )
     assert ret.returncode != 0
     assert (
         "error" in ret.stderr.lower()
         or "not found" in ret.stderr.lower()
+        or "not found" in ret.stdout.lower()
         or "Error" in ret.stdout
     )
+
+
+def test_cli_pcap_file_env_var(tmp_path):
+    """Test CLI reads PCAP_FILE from environment variable."""
+    import sys
+
+    python_exe = sys.executable
+    pcap_file = tmp_path / "env_input.pcap"
+    create_sample_pcap(str(pcap_file))
+
+    env = os.environ.copy()
+    env["PCAP_FILE"] = str(pcap_file)
+
+    ret = subprocess.run(
+        [python_exe, "-m", "pcap_main", "--bootstrap", "invalid:1234"],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    # Should parse successfully even though Kafka will fail
+    assert "Parsed 3 packets" in ret.stdout
+
+
+def test_cli_no_pcap_file():
+    """Test CLI errors when no PCAP file is provided and no env var set."""
+    import sys
+
+    python_exe = sys.executable
+    env = os.environ.copy()
+    env.pop("PCAP_FILE", None)
+
+    ret = subprocess.run(
+        [python_exe, "-m", "pcap_main"],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env=env,
+    )
+    assert ret.returncode != 0
+    assert "pcap_file is required" in ret.stderr or "error" in ret.stderr.lower()

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -73,6 +74,12 @@ def _ensure_port_forward(service: str, local_port: int, remote_port: int):
     if _port_is_open(local_port):
         return  # already forwarded
     try:
+        # Use CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW on Windows to fully
+        # detach the child so it doesn't inherit parent pipe handles (prevents
+        # subprocess.run() in tests from hanging on pipe read).
+        flags = 0
+        if sys.platform == "win32":
+            flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         subprocess.Popen(
             [
                 "kubectl",
@@ -80,9 +87,11 @@ def _ensure_port_forward(service: str, local_port: int, remote_port: int):
                 f"svc/{service}",
                 f"{local_port}:{remote_port}",
             ],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+            close_fds=True,
+            creationflags=flags,
         )
     except FileNotFoundError:
         pass  # kubectl not installed – skip silently
@@ -90,7 +99,12 @@ def _ensure_port_forward(service: str, local_port: int, remote_port: int):
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Parse PCAP and send to Kafka")
-    parser.add_argument("pcap_file", help="Path to the input PCAP file")
+    parser.add_argument(
+        "pcap_file",
+        nargs="?",
+        default=os.getenv("PCAP_FILE"),
+        help="Path to the input PCAP file (or set PCAP_FILE env var)",
+    )
     parser.add_argument(
         "--bootstrap",
         "-b",
@@ -104,6 +118,13 @@ def main(argv=None) -> int:
         help="Kafka topic (default: pcap-packets)",
     )
     args = parser.parse_args(argv)
+
+    if not args.pcap_file:
+        parser.error("pcap_file is required (provide as argument or set PCAP_FILE env var)")
+
+    if not os.path.isfile(args.pcap_file):
+        print(f"Error: File not found: {args.pcap_file}", file=sys.stderr)
+        return 1
 
     # Parse the pcap file
     print(f"Parsing {args.pcap_file}...")
@@ -144,9 +165,10 @@ def main(argv=None) -> int:
     prom_url = "http://localhost:9090/graph?" + urlencode(prom_params)
     print(f"Prometheus Dashboard: {prom_url}")
 
-    # Kibana – Discover page for pcap index
-    kibana_url = "http://localhost:5601/app/discover"
-    print(f"Kibana Discover: {kibana_url}")
+    # Kibana – Dev Tools console (no data-view required, queries all pcap indices)
+    kibana_url = "http://localhost:5601/app/dev_tools#/console"
+    print(f"Kibana Dev Tools: {kibana_url}")
+    print("  Run: GET pcap-*/_search?size=100")
 
     return 0
 
