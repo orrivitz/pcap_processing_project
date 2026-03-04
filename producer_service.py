@@ -5,7 +5,6 @@ import sys
 import time
 from datetime import datetime
 
-import pandas as pd
 from kafka import KafkaProducer
 
 from config import config

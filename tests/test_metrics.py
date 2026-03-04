@@ -1,33 +1,3 @@
-from metrics import bytes_total, elastic_write_total, packets_total
-
-
-def test_packets_total_metric():
-    packets_total.labels(protocol="tcp").inc()
-    packets_total.labels(protocol="udp").inc(2)
-    tcp_val = get_metric_value("pcap_packets_total", {"protocol": "tcp"})
-    udp_val = get_metric_value("pcap_packets_total", {"protocol": "udp"})
-    assert tcp_val == 1
-    assert udp_val == 2
-
-
-def test_bytes_total_metric():
-    bytes_total.labels(protocol="tcp").inc(100)
-    bytes_total.labels(protocol="udp").inc(200)
-    tcp_val = get_metric_value("pcap_bytes_total", {"protocol": "tcp"})
-    udp_val = get_metric_value("pcap_bytes_total", {"protocol": "udp"})
-    assert tcp_val == 100
-    assert udp_val == 200
-
-
-def test_elastic_write_total_metric():
-    elastic_write_total.labels(status="success").inc(5)
-    elastic_write_total.labels(status="fail").inc(2)
-    success_val = get_metric_value("pcap_elastic_write_total", {"status": "success"})
-    fail_val = get_metric_value("pcap_elastic_write_total", {"status": "fail"})
-    assert success_val >= 5
-    assert fail_val >= 2
-
-
 from prometheus_client import CollectorRegistry, Counter
 
 

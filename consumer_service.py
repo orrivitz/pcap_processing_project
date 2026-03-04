@@ -1,15 +1,12 @@
 import json
 import logging
 import math
-
-# Force flush stdout/stderr for Docker logging
 import os
-import sys
 import time
 from datetime import datetime, timezone
 
 from elasticsearch import Elasticsearch, helpers
-from kafka import KafkaConsumer, KafkaProducer, TopicPartition
+from kafka import KafkaConsumer, KafkaProducer
 
 from config import config
 from metrics import (
@@ -190,8 +187,6 @@ def main():
             # This ensures consumer stays registered in Redpanda Console
             records = consumer.poll(timeout_ms=5000, max_records=100)
             poll_count += 1
-
-            messages_this_poll = sum(len(msgs) for msgs in records.values())
 
             for tp, messages in records.items():
                 for msg in messages:

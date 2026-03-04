@@ -1,8 +1,8 @@
 import os
 import subprocess
-import tempfile
 
 import pandas as pd
+import pytest
 from scapy.all import ICMP, IP, TCP, UDP, Ether, wrpcap
 
 from pcap_parser.parser import parse_pcap
@@ -31,9 +31,6 @@ def test_cli_help(tmp_path, capsys):
     assert "pcap_file" in ret.stdout
     assert "--bootstrap" in ret.stdout
     assert "--topic" in ret.stdout
-
-
-import pytest
 
 
 def test_cli_parses_pcap(tmp_path):
