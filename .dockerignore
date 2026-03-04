@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+logs.txt
+*.csv
+*.pcap
+tests/
+k8s/
+.dockerignore
+Dockerfile.*
+README.md
+benchmark.py
+cli.py

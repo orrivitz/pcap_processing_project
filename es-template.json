@@ -1,0 +1,17 @@
+{
+  "index_patterns": ["pcap-packets-*"],
+  "template": {
+    "mappings": {
+      "properties": {
+        "src_ip": {"type": "ip"},
+        "dst_ip": {"type": "ip"},
+        "src_port": {"type": "integer"},
+        "dst_port": {"type": "integer"},
+        "l4_protocol": {"type": "keyword"},
+        "packet_length": {"type": "integer"},
+        "timestamp": {"type": "date"},
+        "ingested_at": {"type": "date"}
+      }
+    }
+  }
+}

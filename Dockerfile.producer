@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY config.py .
+COPY metrics.py .
+COPY producer_service.py .
+COPY pcap_parser/ ./pcap_parser/
+
+# Expose metrics port
+EXPOSE 9100
+
+ENTRYPOINT ["python", "producer_service.py"]

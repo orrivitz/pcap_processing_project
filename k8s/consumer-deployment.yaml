@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcap-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcap-consumer
+  template:
+    metadata:
+      labels:
+        app: pcap-consumer
+    spec:
+      containers:
+      - name: pcap-consumer
+        image: pcap-consumer:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BOOTSTRAP
+          value: kafka:9092
+        - name: ELASTIC_URL
+          value: http://elasticsearch:9200
+        - name: ELASTIC_USERNAME
+          value: ""
+        - name: ELASTIC_PASSWORD
+          value: ""
+        - name: ELASTIC_INDEX
+          value: pcap-packets
+        - name: METRICS_PORT
+          value: "9100"
+        ports:
+        - containerPort: 9100
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "0.25"
+          requests:
+            memory: "256Mi"
+            cpu: "0.1"

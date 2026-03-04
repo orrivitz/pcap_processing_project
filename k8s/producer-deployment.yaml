@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcap-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcap-producer
+  template:
+    metadata:
+      labels:
+        app: pcap-producer
+    spec:
+      containers:
+      - name: pcap-producer
+        image: pcap-producer:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BOOTSTRAP
+          value: kafka:9092
+        - name: METRICS_PORT
+          value: "9100"
+        - name: PCAP_WATCH_DIR
+          value: /data/pcap
+        - name: PCAP_PROCESSED_DIR
+          value: /data/processed
+        - name: POLL_INTERVAL
+          value: "5"
+        ports:
+        - containerPort: 9100
+        volumeMounts:
+        - name: pcap-data
+          mountPath: /data
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "0.25"
+          requests:
+            memory: "256Mi"
+            cpu: "0.1"
+      volumes:
+      - name: pcap-data
+        emptyDir: {}
