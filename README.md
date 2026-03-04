@@ -24,9 +24,11 @@ PCAP File → Producer → Kafka → Consumer → Elasticsearch
 |----------|---------|-------------|
 | `KAFKA_BOOTSTRAP` | `kafka:9092` | Kafka bootstrap servers |
 | `ELASTIC_URL` | `http://elasticsearch:9200` | Elasticsearch URL |
+| `ELASTIC_INDEX` | `pcap-packets` | Elasticsearch index name prefix |
 | `ELASTIC_USERNAME` | *(none)* | ES basic auth username (optional) |
 | `ELASTIC_PASSWORD` | *(none)* | ES basic auth password (optional) |
 | `METRICS_PORT` | `9100` | Prometheus metrics port |
+| `PCAP_FILE` | *(none)* | PCAP file path (alternative to CLI arg) |
 | `PCAP_WATCH_DIR` | `/data/pcap` | Directory to watch for PCAP files |
 | `PCAP_PROCESSED_DIR` | `/data/processed` | Directory for processed files |
 | `POLL_INTERVAL` | `5` | Seconds between directory polls |

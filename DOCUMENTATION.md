@@ -37,16 +37,69 @@ A distributed system for parsing PCAP network capture files and indexing packet 
                     └────────────────────────────────────────┘          └───────────┘
 ```
 
-class Config:
-    KAFKA_BOOTSTRAP   # Kafka broker address
-    METRICS_PORT      # Prometheus metrics port
-    ELASTIC_URL       # Elasticsearch URL
-    ELASTIC_USERNAME  # ES authentication
-    ELASTIC_PASSWORD  # ES authentication
-    ELASTIC_INDEX     # Default index name
+---
+
+## Module Reference
+
+### 1. CLI Entry Point (`pcap_main.py`)
+
+Command-line tool that parses a PCAP file and sends packet data to Kafka.
+
+**Usage:**
+```bash
+python -m pcap_main <pcap_file> [--bootstrap HOST:PORT] [--topic TOPIC]
 ```
 
----
+The PCAP file can also be specified via the `PCAP_FILE` environment variable.
+
+Auto-starts `kubectl port-forward` for Redpanda Console (8080), Prometheus (9090), and Kibana (5601), then prints dashboard URLs.
+
+### 2. PCAP Parser (`pcap_parser/parser.py`)
+
+Core parsing module using `dpkt`.
+
+| Function | Description |
+|----------|-------------|
+| `parse_packet(ts, buf, datalink)` | Parse a single packet buffer, returns a dict or `None` |
+| `parse_pcap(file_path)` | Parse entire PCAP file, returns `pandas.DataFrame` |
+| `iter_pcap(file_path)` | Streaming generator, yields one packet dict at a time |
+
+**Supported datalink types:** Ethernet (`DLT_EN10MB`), Linux SLL (`DLT_LINUX_SLL`), Raw IP (`DLT_RAW`), Loopback (`DLT_NULL`), WiFi 802.11 (`DLT_IEEE802_11`), Radiotap (`DLT_IEEE802_11_RADIO`).
+
+**Supported protocols:** TCP, UDP, ICMP, ARP, other.
+
+### 3. Producer Service (`producer_service.py`)
+
+Kafka producer that runs in two modes:
+
+- **CLI mode** — process a single PCAP file
+- **Watch mode** — poll a directory for new `.pcap`/`.pcapng` files
+
+### 4. Consumer Service (`consumer_service.py`)
+
+Kafka consumer that reads packets from Kafka and bulk-indexes them to Elasticsearch.
+
+**Features:**
+- Batch size of 100 documents per bulk request
+- Retry with exponential backoff (up to 2 retries)
+- Dead Letter Queue (`pcap-packets-dlq`) for failed documents
+- Consumer lag tracking via Prometheus Gauge
+- Auto-applies ES index template on startup
+
+### 5. Configuration (`config.py`)
+
+Centralized configuration via environment variables.
+
+```python
+class Config:
+    KAFKA_BOOTSTRAP   # Kafka broker address (default: kafka:9092)
+    METRICS_PORT      # Prometheus metrics port (default: 9100)
+    ELASTIC_URL       # Elasticsearch URL (default: http://elasticsearch:9200)
+    ELASTIC_INDEX     # Index name prefix (default: pcap-packets)
+    ELASTIC_USERNAME  # ES basic auth username (optional)
+    ELASTIC_PASSWORD  # ES basic auth password (optional)
+    PCAP_FILE         # PCAP file path (optional, alternative to CLI arg)
+```
 
 ### 6. Metrics (`metrics.py`)
 
@@ -165,9 +218,8 @@ kubectl rollout restart deployment pcap-producer pcap-consumer
   "dst_ip": "10.0.0.1",
   "src_port": 443,
   "dst_port": 52341,
-  "l4_protocol": "TCP",
-  "src_mac": "aa:bb:cc:dd:ee:ff",
-  "dst_mac": "11:22:33:44:55:66"
+  "l4_protocol": "tcp",
+  "ingested_at": "2026-03-02T10:30:46.000000"
 }
 ```
 
@@ -187,6 +239,8 @@ curl -s "http://localhost:9200/pcap-packets-*/_search?size=10"
 - `elasticsearch>=8.0.0,<9.0.0` - Elasticsearch client
 - `prometheus_client` - Metrics
 - `pandas` - Data processing
+- `pytest` - Test framework
+- `scapy` - Packet crafting (tests only)
 
 ---
 
