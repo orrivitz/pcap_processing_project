@@ -33,34 +33,53 @@ PCAP File → Producer → Kafka → Consumer → Elasticsearch
 | `PCAP_PROCESSED_DIR` | `/data/processed` | Directory for processed files |
 | `POLL_INTERVAL` | `5` | Seconds between directory polls |
 
-## Quick Start
+## Prerequisites
 
-### Local Development
+- Python 3.11+
+- Docker
+- Minikube
+- kubectl
+
+## Quick Start (from scratch)
 
 ```bash
-# Create virtual environment
+# 1. Clone the repo
+git clone <repo-url>
+cd PacketsProject
+
+# 2. Create virtual environment and install dependencies
 python -m venv .venv
-.venv\Scripts\activate  # Windows
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate    # Linux/Mac
 pip install -r requirements.txt
 
-# Parse a PCAP file locally
-python -m pcap_main /path/to/capture.pcap
-```
-
-### Kubernetes Deployment
-
-```bash
-# Start minikube
+# 3. Start minikube (if not already running)
 minikube start --driver=docker
 
-# Build images
+# 4. Build Docker images inside minikube
 minikube image build -t pcap-producer:latest -f Dockerfile.producer .
 minikube image build -t pcap-consumer:latest -f Dockerfile.consumer .
 
-# Deploy all services
+# 5. Deploy all services to Kubernetes
 kubectl apply -f k8s/
 
-# Copy PCAP file to producer pod
+# 6. Wait for all pods to be Running
+kubectl get pods -w
+
+# 7. Port-forward Kafka for local CLI access (keep this terminal open)
+kubectl port-forward svc/kafka 9094:9094
+
+# 8. Send a PCAP file (in a second terminal, with venv activated)
+python -m pcap_main path/to/capture.pcap
+```
+
+The CLI automatically starts port-forwards for Kibana (5601), Prometheus (9090), and Redpanda Console (8080), and prints dashboard URLs.
+
+### Alternative: Watch Mode (in-cluster)
+
+Instead of the CLI, you can copy a PCAP file directly to the producer pod:
+
+```bash
 kubectl cp myfile.pcap $(kubectl get pods -l app=pcap-producer -o jsonpath="{.items[0].metadata.name}"):/data/pcap/
 ```
 
@@ -68,15 +87,19 @@ kubectl cp myfile.pcap $(kubectl get pods -l app=pcap-producer -o jsonpath="{.it
 
 ```json
 {
+  "doc_id": "pcap-packets-0-42",
   "timestamp": "2026-03-02T14:30:45.123456",
   "src_ip": "192.168.1.100",
   "dst_ip": "10.0.0.1",
   "src_port": 54321,
   "dst_port": 443,
   "l4_protocol": "tcp",
-  "packet_length": 1500
+  "packet_length": 1500,
+  "ingested_at": "2026-03-02T14:30:46.000000"
 }
 ```
+
+The `doc_id` is a deterministic identifier (`topic-partition-offset`) also used as the Elasticsearch `_id` for idempotent writes.
 
 For ARP packets, `src_port` and `dst_port` are `null`, and `l4_protocol` is `"arp"`.
 

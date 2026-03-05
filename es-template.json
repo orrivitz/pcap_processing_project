@@ -10,7 +10,8 @@
         "l4_protocol": {"type": "keyword"},
         "packet_length": {"type": "integer"},
         "timestamp": {"type": "date"},
-        "ingested_at": {"type": "date"}
+        "ingested_at": {"type": "date"},
+        "doc_id": {"type": "keyword"}
       }
     }
   }

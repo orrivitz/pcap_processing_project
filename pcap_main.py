@@ -8,8 +8,43 @@ import subprocess
 import sys
 from datetime import datetime
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 from pcap_parser.parser import parse_pcap
+
+
+def _get_or_create_kibana_index_pattern():
+    """Return the Kibana saved-object ID for the pcap-packets-* index pattern.
+
+    If no matching pattern exists, one is created automatically.
+    Falls back to an empty string so the URL still works (Kibana uses default).
+    """
+    kibana = "http://localhost:5601"
+    headers = {"kbn-xsrf": "true", "Content-Type": "application/json"}
+    try:
+        # Search for existing index pattern
+        find_url = f"{kibana}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=pcap-packets-*"
+        req = Request(find_url, headers=headers)
+        with urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            if data.get("total", 0) > 0:
+                return data["saved_objects"][0]["id"]
+
+        # Not found – create one
+        body = json.dumps({
+            "attributes": {
+                "title": "pcap-packets-*",
+                "timeFieldName": "timestamp",
+            }
+        }).encode()
+        req = Request(f"{kibana}/api/saved_objects/index-pattern", data=body,
+                      headers=headers, method="POST")
+        with urlopen(req, timeout=5) as resp:
+            created = json.loads(resp.read())
+            return created["id"]
+    except (URLError, KeyError, Exception):
+        return ""
 
 
 def serialize_packet(row):
@@ -166,13 +201,18 @@ def main(argv=None) -> int:
     print(f"Prometheus Dashboard: {prom_url}")
 
     # Kibana – Discover view with all packet columns and 1-year time range
+    # Fetch (or create) the index-pattern ID so the URL works on any fresh deploy
+    kibana_index_id = _get_or_create_kibana_index_pattern()
     kibana_url = (
-        "http://localhost:5601/app/discover#/?_g=(filters:!(),refreshInterval:"
-        "(pause:!t,value:60000),time:(from:now-1y%2Fd,to:now))&_a=(columns:!"
-        "(ingested_at,timestamp,dst_ip,dst_port,l4_protocol,src_ip,packet_length,"
-        "src_port),filters:!(),grid:(columns:(ingested_at:(width:317))),index:"
-        "b795bd9f-a427-4912-bb91-13cf40f589f1,interval:auto,query:(language:kuery,"
-        "query:''),sort:!(!(timestamp,asc)))"
+        "http://localhost:5601/app/discover#/"
+        "?_g=(time:(from:now-1y,to:now))"
+        "&_a=(columns:!(doc_id,dst_ip,dst_port,ingested_at,l4_protocol,"
+        "packet_length,src_ip,src_port,timestamp),"
+        "filters:!(),"
+        f"index:'{kibana_index_id}',"
+        "interval:auto,"
+        "query:(language:kuery,query:''),"
+        "sort:!(!(timestamp,desc)))"
     )
     print(f"Kibana Discover: {kibana_url}")
 

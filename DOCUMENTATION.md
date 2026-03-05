@@ -184,7 +184,14 @@ pcap_packets_total
 
 ### Deploy All Services
 
+Images must be built **before** deploying (see Quick Start above).
+
 ```bash
+# Build images first
+minikube image build -t pcap-producer:latest -f Dockerfile.producer .
+minikube image build -t pcap-consumer:latest -f Dockerfile.consumer .
+
+# Then deploy
 kubectl apply -f k8s/
 ```
 
@@ -278,24 +285,37 @@ curl -s "http://localhost:9200/pcap-packets-*/_search?size=10"
 
 ---
 
-## Quick Start
+## Quick Start (from scratch)
 
 ```bash
-# 1. Deploy to Kubernetes
+# 1. Clone the repo and install Python dependencies
+git clone <repo-url>
+cd PacketsProject
+python -m venv .venv
+.venv\Scripts\activate        # Windows  (source .venv/bin/activate on Linux/Mac)
+pip install -r requirements.txt
+
+# 2. Start minikube (if not already running)
+minikube start --driver=docker
+
+# 3. Build Docker images inside minikube
+minikube image build -t pcap-producer:latest -f Dockerfile.producer .
+minikube image build -t pcap-consumer:latest -f Dockerfile.consumer .
+
+# 4. Deploy all services to Kubernetes
 kubectl apply -f k8s/
 
-# 2. Wait for pods
+# 5. Wait for all pods to be Running
 kubectl get pods -w
 
-# 3. Port forward Kafka
+# 6. Port-forward Kafka for local CLI access (keep this terminal open)
 kubectl port-forward svc/kafka 9094:9094
 
-# 4. Send PCAP file
+# 7. Send a PCAP file (in a second terminal, with venv activated)
 python -m pcap_main "path/to/capture.pcap"
 
-# 5. Check Elasticsearch
+# 8. Verify data in Elasticsearch
 kubectl exec $(kubectl get pods -l app=elasticsearch -o jsonpath="{.items[0].metadata.name}") -- curl -s "http://localhost:9200/pcap-packets-*/_count"
-
-# 6. View in Kibana
-minikube service kibana --url
 ```
+
+The CLI automatically starts port-forwards for Kibana (5601), Prometheus (9090), and Redpanda Console (8080), and prints dashboard URLs.

@@ -11,4 +11,3 @@ k8s/
 Dockerfile.*
 README.md
 benchmark.py
-cli.py
