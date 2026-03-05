@@ -139,12 +139,30 @@ def parse_packet(ts: float, buf: bytes, datalink: int) -> Optional[dict]:
     }
 
 
+def _open_pcap(f):
+    """Open a pcap or pcapng file, returning (reader, datalink_type).
+
+    Tries classic pcap first, then falls back to pcapng.
+    Returns ``None`` if neither format can parse the file.
+    """
+    try:
+        reader = dpkt.pcap.Reader(f)
+        return reader, reader.datalink()
+    except (ValueError, dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError):
+        f.seek(0)
+    try:
+        reader = dpkt.pcapng.Reader(f)
+        return reader, reader.datalink()
+    except (ValueError, dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError):
+        return None
+
+
 def iter_pcap(file_path: str) -> Iterator[dict]:
     """Yield parsed packet dicts one at a time for memory-efficient streaming.
 
     Each yielded dict contains the same fields as a row in the DataFrame
     returned by :func:`parse_pcap` (with IPs already converted to
-    dotted-quad strings).
+    dotted-quad strings).  Supports both pcap and pcapng formats.
 
     Parameters
     ----------
@@ -157,12 +175,11 @@ def iter_pcap(file_path: str) -> Iterator[dict]:
         A single parsed packet record.
     """
     with open(file_path, "rb") as f:
-        try:
-            pcap = dpkt.pcap.Reader(f)
-        except (dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError):
+        result = _open_pcap(f)
+        if result is None:
             return
+        pcap, dl = result
 
-        dl = pcap.datalink()
         for ts, buf in pcap:
             record = parse_packet(ts, buf, dl)
             if record is not None:
@@ -198,10 +215,9 @@ def parse_pcap(file_path: str) -> pd.DataFrame:
     """
     # we'll build column lists efficiently, avoiding per-packet dict allocation
     with open(file_path, "rb") as f:
-        try:
-            pcap = dpkt.pcap.Reader(f)
-        except (dpkt.dpkt.NeedData, dpkt.dpkt.UnpackError):
-            # file is empty or not a valid pcap
+        result = _open_pcap(f)
+        if result is None:
+            # file is empty or not a valid pcap/pcapng
             return pd.DataFrame(
                 columns=[
                     "timestamp",
@@ -214,7 +230,7 @@ def parse_pcap(file_path: str) -> pd.DataFrame:
                 ]
             )
 
-        dl = pcap.datalink()
+        pcap, dl = result
         # Pre-allocate column lists (optimization: avoid per-packet dict allocation)
         timestamps = []
         src_ips = []
